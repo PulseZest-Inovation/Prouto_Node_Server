@@ -1,0 +1,27 @@
+{
+  "name": "prouto-node-server",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.js",
+  "devDependencies": {},
+  "scripts": {
+    "start": "node server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "geotiff": "^2.1.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PulseZest-Inovation/prouto-node-server.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/PulseZest-Inovation/prouto-node-server/issues"
+  },
+  "homepage": "https://github.com/PulseZest-Inovation/prouto-node-server#readme"
+}
