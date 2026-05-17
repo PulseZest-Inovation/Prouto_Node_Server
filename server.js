@@ -4,7 +4,7 @@ const path = require("path");
 const GeoTIFF = require("geotiff");
 
 const app = express();
-const PORT = 3001;
+const PORT = process.env.PORT || 8080;
 
 let image = null;
 
@@ -91,6 +91,6 @@ app.get("/api/get-population", async (req, res) => {
     }
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
     console.log(`Population server running on port ${PORT}`);
 });
