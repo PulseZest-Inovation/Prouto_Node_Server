@@ -14,14 +14,14 @@ app.get("/", (req, res) => {
 app.get("/api/test", async (req, res) => {
 
     try {
-        //bucket name
+
         const bucket = storage.bucket("prouto-population-data");
 
         const [files] = await bucket.getFiles();
 
         res.json({
             success: true,
-            totalfiles: files.length,
+            totalFiles: files.length,
         });
 
     } catch (err) {
