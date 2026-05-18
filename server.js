@@ -5,7 +5,14 @@ const app = express();
 const PORT = process.env.PORT || 8080;
 
 app.get("/", (req, res) => {
-    res.send("Cloud Run Working 🚀");
+    res.send("Prouto Population Server Running 🚀");
+});
+
+app.get("/api/test", (req, res) => {
+    res.json({
+        success: true,
+        message: "API working 🚀"
+    });
 });
 
 app.listen(PORT, "0.0.0.0", () => {
