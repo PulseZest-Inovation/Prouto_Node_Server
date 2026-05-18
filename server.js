@@ -2,9 +2,11 @@ const express = require("express");
 const fs = require("fs");
 const path = require("path");
 const GeoTIFF = require("geotiff");
+const { Storage } = require("@google-cloud/storage");
 
 const app = express();
 const PORT = process.env.PORT || 8080;
+const storage = new Storage();
 
 let image = null;
 
@@ -12,11 +14,19 @@ let image = null;
  * Load GeoTIFF once
  */
 async function loadGeoTiff() {
+
     if (image) return image;
 
-    const filePath = path.join(__dirname, "data", "ind_ppp_2020.tif");
+    const bucketName = "prouto-population-data";
+    const fileName = "ind_ppp_2020.tif";
 
-    const buffer = fs.readFileSync(filePath);
+    const file = storage
+        .bucket(bucketName)
+        .file(fileName);
+
+    console.log("Downloading GeoTIFF from Cloud Storage...");
+
+    const [buffer] = await file.download();
 
     const tiff = await GeoTIFF.fromArrayBuffer(buffer.buffer);
 
