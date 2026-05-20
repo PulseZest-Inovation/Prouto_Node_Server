@@ -1,15 +1,21 @@
 const express = require("express");
 const GeoTIFF = require("geotiff");
+const { Storage } = require("@google-cloud/storage");
 
 const app = express();
 
 const PORT = process.env.PORT || 8080;
 
 /**
- * Public TIFF URL
+ * Google Cloud Storage
  */
-const fileUrl =
-    "https://storage.googleapis.com/prouto-population-data/ind_ppp_2020_cog.tif";
+const storage = new Storage();
+
+const bucketName =
+    "prouto-population-data";
+
+const fileName =
+    "ind_ppp_2020_cog.tif";
 
 /**
  * TIFF + Cache
@@ -23,6 +29,25 @@ let loadingPromise = null;
 const populationCache = new Map();
 
 /**
+ * Generate Signed URL
+ */
+async function getSignedUrl() {
+
+    const options = {
+        version: "v4",
+        action: "read",
+        expires: Date.now() + 1000 * 60 * 60,
+    };
+
+    const [url] = await storage
+        .bucket(bucketName)
+        .file(fileName)
+        .getSignedUrl(options);
+
+    return url;
+}
+
+/**
  * Load TIFF once
  */
 async function loadGeoTiff() {
@@ -31,22 +56,34 @@ async function loadGeoTiff() {
         return image;
     }
 
-    /**
-     * Prevent multiple simultaneous loads
-     */
     if (loadingPromise) {
         return loadingPromise;
     }
 
     loadingPromise = (async () => {
 
-        console.log("Loading GeoTIFF from URL...");
+        console.log(
+            "Generating signed URL..."
+        );
 
-        const tiff = await GeoTIFF.fromUrl(fileUrl);
+        const signedUrl =
+            await getSignedUrl();
 
-        image = await tiff.getImage();
+        console.log(
+            "Loading COG GeoTIFF..."
+        );
 
-        console.log("GeoTIFF loaded successfully 🚀");
+        const tiff =
+            await GeoTIFF.fromUrl(
+                signedUrl
+            );
+
+        image =
+            await tiff.getImage();
+
+        console.log(
+            "COG GeoTIFF loaded 🚀"
+        );
 
         return image;
 
@@ -60,10 +97,6 @@ async function loadGeoTiff() {
  */
 async function getPopulation(lat, lng) {
 
-    /**
-     * Reduced precision
-     * better cache hit rate
-     */
     const roundedLat =
         Number(lat).toFixed(2);
 
@@ -74,21 +107,33 @@ async function getPopulation(lat, lng) {
         `${roundedLat}_${roundedLng}`;
 
     /**
-     * Return from cache
+     * Return cached value
      */
     if (populationCache.has(cacheKey)) {
 
-        return populationCache.get(cacheKey);
+        return populationCache.get(
+            cacheKey
+        );
     }
 
-    const img = await loadGeoTiff();
+    const img =
+        await loadGeoTiff();
 
-    const bbox = img.getBoundingBox();
+    const bbox =
+        img.getBoundingBox();
 
-    const width = img.getWidth();
-    const height = img.getHeight();
+    const width =
+        img.getWidth();
 
-    const [minX, minY, maxX, maxY] = bbox;
+    const height =
+        img.getHeight();
+
+    const [
+        minX,
+        minY,
+        maxX,
+        maxY,
+    ] = bbox;
 
     /**
      * Convert lat/lng → pixel
@@ -113,7 +158,10 @@ async function getPopulation(lat, lng) {
         y >= height
     ) {
 
-        populationCache.set(cacheKey, 0);
+        populationCache.set(
+            cacheKey,
+            0
+        );
 
         return 0;
     }
@@ -121,16 +169,23 @@ async function getPopulation(lat, lng) {
     /**
      * Read tiny raster window
      */
-    const raster = await img.readRasters({
-        window: [x, y, x + 1, y + 1],
-        width: 1,
-        height: 1,
-        interleave: true,
-    });
+    const raster =
+        await img.readRasters({
+            window: [
+                x,
+                y,
+                x + 1,
+                y + 1,
+            ],
+            width: 1,
+            height: 1,
+            interleave: true,
+        });
 
     const population =
         Number(
-            (raster?.[0] || 0).toFixed(3)
+            (raster?.[0] || 0)
+                .toFixed(3)
         );
 
     /**
@@ -144,12 +199,18 @@ async function getPopulation(lat, lng) {
     /**
      * Prevent memory explosion
      */
-    if (populationCache.size > 50000) {
+    if (
+        populationCache.size > 50000
+    ) {
 
         const firstKey =
-            populationCache.keys().next().value;
+            populationCache
+                .keys()
+                .next().value;
 
-        populationCache.delete(firstKey);
+        populationCache.delete(
+            firstKey
+        );
     }
 
     return population;
@@ -183,13 +244,17 @@ app.get(
 
         try {
 
-            const { lat, lng } = req.query;
+            const { lat, lng } =
+                req.query;
 
             if (!lat || !lng) {
 
-                return res.status(400).json({
-                    error: "lat and lng required",
-                });
+                return res
+                    .status(400)
+                    .json({
+                        error:
+                            "lat and lng required",
+                    });
             }
 
             const population =
@@ -218,26 +283,29 @@ app.get(
 /**
  * Start Server
  */
-app.listen(PORT, "0.0.0.0", async () => {
-
-    console.log(`Running on ${PORT}`);
-
-    /**
-     * Preload TIFF
-     */
-    try {
-
-        await loadGeoTiff();
+app.listen(
+    PORT,
+    "0.0.0.0",
+    async () => {
 
         console.log(
-            "TIFF preloaded successfully 🚀"
+            `Running on ${PORT}`
         );
 
-    } catch (err) {
+        try {
 
-        console.error(
-            "TIFF preload failed:",
-            err
-        );
+            await loadGeoTiff();
+
+            console.log(
+                "COG preloaded 🚀"
+            );
+
+        } catch (err) {
+
+            console.error(
+                "Preload failed:",
+                err
+            );
+        }
     }
-});
+);
