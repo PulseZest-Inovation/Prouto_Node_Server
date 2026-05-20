@@ -1,34 +1,38 @@
-const express = require("express");
+﻿const express = require("express");
 const GeoTIFF = require("geotiff");
-const { Storage } = require("@google-cloud/storage");
 
 const app = express();
 
 const PORT = process.env.PORT || 8080;
 
-const storage = new Storage();
-
-const bucketName = "prouto-population-data";
-const fileName = "ind_ppp_2020.tif";
+/**
+ * Public URL of TIFF file
+ * Make sure file is public in GCS
+ */
+const fileUrl =
+    "https://storage.googleapis.com/prouto-population-data/ind_ppp_2020.tif";
 
 let image = null;
 
 /**
- * Load GeoTIFF once
+ * Population Cache
+ */
+const populationCache = {};
+
+/**
+ * Load GeoTIFF WITHOUT downloading full file
  */
 async function loadGeoTiff() {
 
     if (image) return image;
 
-    console.log("Downloading TIFF from Cloud Storage...");
+    console.log("Loading GeoTIFF from URL...");
 
-    const file = storage
-        .bucket(bucketName)
-        .file(fileName);
-
-    const [buffer] = await file.download();
-
-    const tiff = await GeoTIFF.fromArrayBuffer(buffer.buffer);
+    /**
+     * Streams data using HTTP range requests
+     * instead of downloading full 2GB file
+     */
+    const tiff = await GeoTIFF.fromUrl(fileUrl);
 
     image = await tiff.getImage();
 
@@ -42,6 +46,22 @@ async function loadGeoTiff() {
  */
 async function getPopulation(lat, lng) {
 
+    /**
+     * Reduce precision for better caching
+     */
+    const roundedLat = Number(lat).toFixed(2);
+    const roundedLng = Number(lng).toFixed(2);
+
+    const cacheKey =
+        `${roundedLat}_${roundedLng}`;
+
+    /**
+     * Return cache if exists
+     */
+    if (populationCache[cacheKey] !== undefined) {
+        return populationCache[cacheKey];
+    }
+
     const img = await loadGeoTiff();
 
     const bbox = img.getBoundingBox();
@@ -52,28 +72,43 @@ async function getPopulation(lat, lng) {
     const [minX, minY, maxX, maxY] = bbox;
 
     const x = Math.floor(
-        ((lng - minX) / (maxX - minX)) * width
+        ((Number(lng) - minX) / (maxX - minX)) * width
     );
 
     const y = Math.floor(
-        ((maxY - lat) / (maxY - minY)) * height
+        ((maxY - Number(lat)) / (maxY - minY)) * height
     );
 
+    /**
+     * Outside India bounds
+     */
     if (x < 0 || y < 0 || x >= width || y >= height) {
+
+        populationCache[cacheKey] = 0;
+
         return 0;
     }
 
+    /**
+     * Read ONLY tiny raster window
+     */
     const raster = await img.readRasters({
         window: [x, y, x + 1, y + 1],
     });
 
-    const population = raster?.[0]?.[0] || 0;
+    const population =
+        Number((raster?.[0]?.[0] || 0).toFixed(3));
 
-    return Number(population.toFixed(3));
+    /**
+     * Save cache
+     */
+    populationCache[cacheKey] = population;
+
+    return population;
 }
 
 /**
- * Root
+ * Root Route
  */
 app.get("/", (req, res) => {
     res.send("Prouto Population Server Running 🚀");
@@ -115,6 +150,23 @@ app.get("/api/get-population", async (req, res) => {
     }
 });
 
+/**
+ * Start Server
+ */
 app.listen(PORT, "0.0.0.0", () => {
+
     console.log(`Running on ${PORT}`);
+
+    /**
+     * Warm TIFF cache after startup
+     */
+    setTimeout(() => {
+
+        loadGeoTiff()
+            .then(() => {
+                console.log("TIFF preloaded 🚀");
+            })
+            .catch(console.error);
+
+    }, 3000);
 });
